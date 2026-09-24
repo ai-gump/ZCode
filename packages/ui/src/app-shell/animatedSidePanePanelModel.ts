@@ -1,6 +1,5 @@
-const MIN_PREVIEW_PANE_HEAVY_CONTENT_VISIBLE_INLINE_SIZE_PX = 96;
-
 export type OpenTabLauncherItemId =
+  | "file-browser"
   | "selection-side-conversation"
   | "review"
   | "terminal"
@@ -18,7 +17,8 @@ export function resolveOpenTabLauncherItemIds({
   canOpenSelectionSideConversation?: boolean;
   supportsEmbeddedBrowser?: boolean;
 }): OpenTabLauncherItemId[] {
-  const itemIds: OpenTabLauncherItemId[] = [];
+  // 文件浏览固定排在辅助对话之前，保证空态卡片顺序稳定。
+  const itemIds: OpenTabLauncherItemId[] = ["file-browser"];
 
   if (canOpenSelectionSideConversation) {
     itemIds.push("selection-side-conversation");
@@ -58,6 +58,8 @@ export function resolveAnimatedSidePanePanelLayout() {
     useResizablePanel: true,
   };
 }
+
+const MIN_PREVIEW_PANE_HEAVY_CONTENT_VISIBLE_INLINE_SIZE_PX = 96;
 
 export function shouldRenderPreviewPaneHeavyContent({
   isActiveTab,

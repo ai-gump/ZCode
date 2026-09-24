@@ -34,6 +34,8 @@ import {
   openWorkflowWorkspaceSidePane,
   openWorkflowArtifactSidePane,
   activateDeveloperToolsSidePane,
+  activateFileBrowserSidePane,
+  setFileBrowserSidePaneSource,
   openBrowserSidePane,
   openOrActivateBrowserSidePaneByUrl,
   findBrowserSidePaneTabByUrl,
@@ -785,6 +787,31 @@ export function useAppPanels(options: {
       return next;
     });
   }, [commitOpenedSidePaneState, revealSidePaneForCurrentOwner, workspaceAbsPath]);
+
+  const handleOpenFileBrowser = useCallback(() => {
+    revealSidePaneForCurrentOwner();
+    commitOpenedSidePaneState((current) => {
+      const next = activateFileBrowserSidePane(current);
+      logger.info(
+        `[App] 打开右侧面板 mode=file-browser workspace=${workspaceAbsPath} tabs=${next.tabs.length}`,
+      );
+      return next;
+    });
+  }, [commitOpenedSidePaneState, revealSidePaneForCurrentOwner, workspaceAbsPath]);
+
+  const handleSelectFileBrowserSource = useCallback(
+    (source: CodeViewerSource | null) => {
+      revealSidePaneForCurrentOwner();
+      commitOpenedSidePaneState((current) => {
+        const next = setFileBrowserSidePaneSource(current, source);
+        logger.debug(
+          `[App] 更新文件浏览预览 workspace=${workspaceAbsPath} hasSource=${source !== null}`,
+        );
+        return next;
+      });
+    },
+    [commitOpenedSidePaneState, revealSidePaneForCurrentOwner, workspaceAbsPath],
+  );
 
   const handleOpenTerminalTab = useCallback(() => {
     if (isOfficeMode) return;
@@ -1587,6 +1614,8 @@ export function useAppPanels(options: {
     handleOpenTreemapping,
     handleOpenWhiteboard,
     handleOpenDeveloperTools,
+    handleOpenFileBrowser,
+    handleSelectFileBrowserSource,
     handleOpenTerminalTab,
     handleOpenModelTrajectory,
     handleOpenSubagentSession,

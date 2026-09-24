@@ -66,6 +66,8 @@ import {
   shouldRenderPreviewPaneHeavyContent,
   type OpenTabLauncherItemId,
 } from "@/app-shell/animatedSidePanePanelModel.js";
+import { FileBrowserSidePane } from "@/app-shell/FileBrowserSidePane.js";
+import { OpenTabLauncher, type OpenTabLauncherItem } from "@/app-shell/OpenTabLauncher.js";
 import type { BrowserNavigationRequest, RecentClosedSidePaneTab } from "@/hooks/useAppPanels.js";
 import { useDeveloperToolsVisibility } from "@/hooks/useDeveloperToolsVisibility.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
@@ -92,11 +94,11 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import {
   BugIcon,
   FileDiffIcon,
+  FolderTreeIcon,
   GlobeIcon,
   MessageSquareTextIcon,
   PlusIcon,
   SquareTerminalIcon,
-  type LucideIcon,
 } from "lucide-react";
 
 const SIDE_PANE_CONTENT_WIDTH_LOCK_DURATION_MS = 200;
@@ -104,12 +106,6 @@ const PREVIEW_PANE_RESIZE_SETTLE_DELAY_MS = 220;
 type TabsScrollMaskEdges = {
   left: boolean;
   right: boolean;
-};
-type OpenTabLauncherItem = {
-  id: OpenTabLauncherItemId;
-  label: string;
-  icon: LucideIcon;
-  onOpen: () => void;
 };
 const EMPTY_SIDE_PANE_TABS: WorkspaceSidePaneState["tabs"] = [];
 const EMPTY_TABS_SCROLL_MASK_EDGES: TabsScrollMaskEdges = {
@@ -313,6 +309,8 @@ export function AnimatedSidePanePanel({
   onOpenBrowserTab,
   onOpenWhiteboard: _onOpenWhiteboard,
   onOpenDeveloperTools,
+  onOpenFileBrowser,
+  onSelectFileBrowserSource,
   onOpenTerminalTab,
   onOpenReviewTab,
   onOpenSelectionSideConversation,
@@ -378,6 +376,8 @@ export function AnimatedSidePanePanel({
   onOpenBrowserTab: () => void;
   onOpenWhiteboard: () => void;
   onOpenDeveloperTools: () => void;
+  onOpenFileBrowser: () => void;
+  onSelectFileBrowserSource: (source: CodeViewerSource | null) => void;
   onOpenTerminalTab: () => void;
   onOpenReviewTab: () => void;
   onOpenSelectionSideConversation: () => void;
@@ -696,6 +696,10 @@ export function AnimatedSidePanePanel({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuItem data-side-pane-add-item="file-browser" onSelect={onOpenFileBrowser}>
+          <FolderTreeIcon className="size-4" />
+          <span>{intl.formatMessage({ id: "sidePane.fileBrowser" })}</span>
+        </DropdownMenuItem>
         {canOpenSelectionSideConversation ? (
           <DropdownMenuItem
             data-side-pane-add-item="selection-side-conversation"
@@ -761,6 +765,12 @@ export function AnimatedSidePanePanel({
     </DropdownMenu>
   );
   const openTabLauncherItemById: Record<OpenTabLauncherItemId, OpenTabLauncherItem> = {
+    "file-browser": {
+      id: "file-browser",
+      label: intl.formatMessage({ id: "sidePane.fileBrowser" }),
+      icon: FolderTreeIcon,
+      onOpen: onOpenFileBrowser,
+    },
     "selection-side-conversation": {
       id: "selection-side-conversation",
       label: intl.formatMessage({ id: "sidePane.selectionChat" }),
@@ -812,50 +822,12 @@ export function AnimatedSidePanePanel({
       </div>
     ) : null;
   const openTabLauncher = (
-    <div className="side-pane-open-tab-shell flex h-full min-h-0 flex-col bg-background">
-      {
-        <div
-          className={cn(
-            "flex h-12 shrink-0 items-center justify-end px-2",
-            isDesktop && "[app-region:drag]",
-          )}
-          style={captionControlsStyle}
-        >
-          {closeSidePaneButton}
-        </div>
-      }
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-5 py-10">
-        <div className="side-pane-open-tab-content flex w-full max-w-[20rem] flex-col gap-5">
-          <div className="flex flex-col gap-2 text-center">
-            <h2 className="text-xl font-semibold leading-7 text-foreground">
-              {intl.formatMessage({ id: "sidePane.openTab" })}
-            </h2>
-            <p className="text-ui-base leading-5 text-foreground-subtle">
-              {intl.formatMessage({ id: "sidePane.openTabDescription" })}
-            </p>
-          </div>
-          <div className="side-pane-open-tab-list flex w-full flex-col gap-2">
-            {openTabLauncherItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  data-side-pane-open-tab-item={item.id}
-                  className="side-pane-open-tab-button flex h-12 min-w-0 items-center gap-3 rounded-xl bg-surface px-3 text-ui-base font-medium text-foreground transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  onClick={item.onOpen}
-                >
-                  <Icon className="size-4 text-foreground-subtle" />
-                  <span className="side-pane-open-tab-button-label min-w-0 flex-1 truncate text-left">
-                    {item.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
+    <OpenTabLauncher
+      items={openTabLauncherItems}
+      isDesktop={isDesktop}
+      captionControlsStyle={captionControlsStyle}
+      headerActions={closeSidePaneButton}
+    />
   );
   const sidePaneTabOverview = (
     <SidePaneTabOverview
@@ -885,6 +857,7 @@ export function AnimatedSidePanePanel({
         developerToolsTitle: intl.formatMessage({
           id: "developerTools.title",
         }),
+        fileBrowserTitle: intl.formatMessage({ id: "sidePane.fileBrowser" }),
         terminalTitle: intl.formatMessage({ id: "terminal.title" }),
         subagentTypeLabel: intl.formatMessage({ id: "sidePane.subagent" }),
         subagentDirectoryTitle: intl.formatMessage({
@@ -1251,6 +1224,24 @@ export function AnimatedSidePanePanel({
                               workspaceIdentity={workspaceIdentity}
                               taskId={activeTaskId}
                               enabled={isVisible && tab.id === visibleActiveTabId}
+                            />
+                          </ServiceProvider>
+                        ) : tab.type === "file-browser" ? (
+                          <ServiceProvider services={services}>
+                            <FileBrowserSidePane
+                              tab={tab}
+                              isActiveTab={tab.id === visibleActiveTabId}
+                              isSidePaneVisible={isVisible}
+                              isWindowResizeSettling={isWindowResizeSettling}
+                              sidePaneVisibleInlineSizePx={sidePaneVisibleInlineSizePx}
+                              workspacePath={workspaceAbsPath}
+                              workspaceIdentity={workspaceIdentity}
+                              workspaceRemoteSessionId={workspaceRemoteSessionId}
+                              workspaceKey={workspaceKey}
+                              activeTaskId={activeTaskId}
+                              onSelectSource={onSelectFileBrowserSource}
+                              onOpenBrowserUrl={onOpenBrowserUrl}
+                              onOpenCodeViewer={onOpenCodeViewer}
                             />
                           </ServiceProvider>
                         ) : tab.type === "terminal" ? (

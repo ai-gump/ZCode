@@ -506,6 +506,10 @@ export const TID_WORKSPACE_FILE_TREE_PANEL = "workspace-file-tree-panel";
 export const TID_WORKSPACE_FILE_TREE_REFRESH_BUTTON = "workspace-file-tree-refresh-button";
 /** 工作区文件树条目（动态后缀为文件绝对路径） */
 export const TID_WORKSPACE_FILE_TREE_ROW = "workspace-file-tree-row";
+/** 打开标签页空态中的项目文件浏览器 */
+export const TID_SIDE_PANE_OPEN_TAB_FILE_BROWSER = "side-pane-open-tab-file-browser";
+/** 打开标签页文件浏览器条目（动态后缀为文件绝对路径） */
+export const TID_SIDE_PANE_OPEN_TAB_FILE_ROW = "side-pane-open-tab-file-row";
 // SSH 错误提示
 /** SSH 连接错误信息 */
 export const TID_SSH_ERROR = "ssh-error";

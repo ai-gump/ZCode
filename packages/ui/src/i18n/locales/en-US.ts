@@ -707,6 +707,9 @@ const enUS: Record<string, string> = {
   "chat.selections.limit.total":
     "Conversation selections can contain at most 16,000 characters in total.",
   "sidePane.openTabDescription": "Choose a tab to open in the side pane.",
+  "sidePane.fileBrowser": "File browser",
+  "sidePane.fileBrowser.title": "Project files",
+  "sidePane.fileBrowser.emptyPreview": "Select a file to preview",
   "sidePane.openFile": "Open file",
   "sidePane.openFileDescription": "Open a file from the current workspace in the side panel.",
   "sidePane.openFilePlaceholder": "Search files in the current workspace...",

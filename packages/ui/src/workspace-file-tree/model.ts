@@ -121,6 +121,25 @@ export function isWorkspaceFileTreeDeletedFile(
   return row.type !== "directory" && gitStatus === "deleted";
 }
 
+/** 目录单击展开/折叠的唯一状态迁移；压缩目录折叠时要一并收回 compactedPaths。 */
+export function toggleWorkspaceFileTreeDirectoryExpansion(
+  current: ReadonlySet<string>,
+  row: Pick<WorkspaceFileTreeRow, "path" | "type" | "compactedPaths">,
+): Set<string> {
+  const next = new Set(current);
+  if (row.type !== "directory") {
+    return next;
+  }
+  if (next.has(row.path)) {
+    for (const path of row.compactedPaths ?? [row.path]) {
+      next.delete(path);
+    }
+    return next;
+  }
+  next.add(row.path);
+  return next;
+}
+
 export function isWorkspaceFileTreeAutoFlattenableDirectory(
   node: Pick<WorkspaceFileTreeNode, "type" | "isSymbolicLink"> | undefined,
 ): node is WorkspaceFileTreeNode {

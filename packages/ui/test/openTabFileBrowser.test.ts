@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveOpenTabLauncherItemIds } from "../src/app-shell/animatedSidePanePanelModel.js";
+import {
+  isFileBrowserTextEditableSource,
+  resolveFileBrowserEditableFilePath,
+} from "../src/app-shell/fileBrowserEditModel.js";
 import { toggleWorkspaceFileTreeDirectoryExpansion } from "../src/workspace-file-tree/model.js";
 import {
   activateFileBrowserSidePane,
@@ -17,11 +21,14 @@ test("toggleWorkspaceFileTreeDirectoryExpansion expands a collapsed directory", 
 });
 
 test("toggleWorkspaceFileTreeDirectoryExpansion collapses a compacted directory chain", () => {
-  const next = toggleWorkspaceFileTreeDirectoryExpansion(new Set(["/project/src", "/project/src/app"]), {
-    path: "/project/src",
-    type: "directory",
-    compactedPaths: ["/project/src", "/project/src/app"],
-  });
+  const next = toggleWorkspaceFileTreeDirectoryExpansion(
+    new Set(["/project/src", "/project/src/app"]),
+    {
+      path: "/project/src",
+      type: "directory",
+      compactedPaths: ["/project/src", "/project/src/app"],
+    },
+  );
 
   assert.equal(next.size, 0);
 });
@@ -62,10 +69,41 @@ test("setFileBrowserSidePaneSource updates preview without opening a second tab"
   const withSource = setFileBrowserSidePaneSource(opened, {
     type: "file",
     path: "/project/README.md",
+    title: "README.md",
     workspacePath: "/project",
   });
 
   assert.equal(withSource.tabs.length, 1);
   assert.equal(withSource.tabs[0]?.type, "file-browser");
-  assert.equal(withSource.tabs[0]?.type === "file-browser" ? withSource.tabs[0].source?.type : null, "file");
+  assert.equal(
+    withSource.tabs[0]?.type === "file-browser" ? withSource.tabs[0].source?.type : null,
+    "file",
+  );
+});
+
+test("isFileBrowserTextEditableSource allows plain text files", () => {
+  assert.equal(
+    isFileBrowserTextEditableSource({
+      type: "file",
+      path: "/project/README.md",
+      title: "README.md",
+    }),
+    true,
+  );
+  assert.equal(
+    isFileBrowserTextEditableSource({
+      type: "file",
+      path: "/project/photo.png",
+      title: "photo.png",
+    }),
+    false,
+  );
+  assert.equal(
+    resolveFileBrowserEditableFilePath({
+      type: "file",
+      path: "/project/README.md",
+      title: "README.md",
+    }),
+    "/project/README.md",
+  );
 });

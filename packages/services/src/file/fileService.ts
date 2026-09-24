@@ -29,6 +29,7 @@ import {
 } from "./workspaceFileIgnore.js";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 import { getConversationWorkspaceDir } from "../paths.js";
+import { atomicWriteText } from "../fs/atomicFileUtils.js";
 const DEFAULT_TEXT_READ_BYTES = 128 * 1024;
 const MAX_TEXT_READ_BYTES = 256 * 1024;
 const DEFAULT_MEDIA_PREVIEW_BYTES = 4 * 1024 * 1024;
@@ -518,6 +519,14 @@ export function createFileService(options: CreateFileServiceOptions = {}): IFile
       } finally {
         await handle.close();
       }
+    },
+    async writeTextFile(params: { path: string; content: string }): Promise<void> {
+      const fileStat = await stat(params.path);
+      if (!fileStat.isFile()) {
+        throw new Error(`Path is not a file: ${params.path}`);
+      }
+      // 侧栏编辑态只覆盖已有文本文件；走原子写避免半截写入留在目标路径。
+      await atomicWriteText(params.path, params.content);
     },
     async readFileRange(params: {
       path: string;

@@ -1,8 +1,15 @@
+import { useEffect, useState, type MouseEvent } from "react";
 import { FolderOpen } from "lucide-react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { toast } from "@/components/ui/toast.js";
 import { PreviewPane } from "@/PreviewPane.js";
 import { OpenTabFileBrowser } from "@/app-shell/OpenTabFileBrowser.js";
+import { FileBrowserTextEditor } from "@/app-shell/FileBrowserTextEditor.js";
 import { shouldRenderPreviewPaneHeavyContent } from "@/app-shell/animatedSidePanePanelModel.js";
+import {
+  isFileBrowserTextEditableSource,
+  resolveFileBrowserEditableFilePath,
+} from "@/app-shell/fileBrowserEditModel.js";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable.js";
 import { WorkspaceFileTreeNotice } from "@/workspace-file-tree/WorkspaceFileTreeNotice.js";
 import { inferMediaPreview, type CodeViewerSource } from "@/lib/codeViewer.js";
@@ -41,6 +48,10 @@ export function FileBrowserSidePane({
 }) {
   const { intl } = useZCodeIntl();
   const source = tab.source ?? null;
+  const [editing, setEditing] = useState(false);
+  const [previewEpoch, setPreviewEpoch] = useState(0);
+  const editablePath = source ? resolveFileBrowserEditableFilePath(source) : null;
+  const canEdit = isFileBrowserTextEditableSource(source) && Boolean(editablePath);
   const renderHeavyContent = shouldRenderPreviewPaneHeavyContent({
     isActiveTab,
     isMediaPreview:
@@ -52,6 +63,26 @@ export function FileBrowserSidePane({
     visibleInlineSizePx:
       sidePaneVisibleInlineSizePx === null ? null : Math.floor(sidePaneVisibleInlineSizePx * 0.55),
   });
+
+  useEffect(() => {
+    // 切换预览文件时退出编辑，避免草稿串到另一个 path。
+    setEditing(false);
+  }, [editablePath]);
+
+  const handlePreviewDoubleClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (!canEdit || !editablePath) {
+      return;
+    }
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    // 顶栏按钮 / 菜单不进入编辑，只响应正文区双击。
+    if (target.closest("button, a, [role='menuitem'], input, textarea, select")) {
+      return;
+    }
+    setEditing(true);
+  };
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col bg-background">
@@ -67,16 +98,33 @@ export function FileBrowserSidePane({
           minSize="35%"
           className="min-h-0 min-w-0"
         >
-          {source ? (
-            <PreviewPane
-              markdownSelectionTarget={{ sessionId: activeTaskId, workspaceKey }}
-              source={source}
-              onClose={() => onSelectSource(null)}
-              workspacePath={workspacePath}
-              onOpenBrowserUrl={onOpenBrowserUrl}
-              onOpenCodeViewer={onOpenCodeViewer}
-              renderHeavyContent={renderHeavyContent}
+          {source && editing && editablePath ? (
+            <FileBrowserTextEditor
+              path={editablePath}
+              workspacePath={source.workspacePath ?? workspacePath}
+              workspaceIdentity={source.workspaceIdentity ?? workspaceIdentity}
+              workspaceRemoteSessionId={
+                source.workspaceRemoteSessionId ?? workspaceRemoteSessionId
+              }
+              onCancel={() => setEditing(false)}
+              onSaved={() => {
+                setEditing(false);
+                setPreviewEpoch((current) => current + 1);
+              }}
             />
+          ) : source ? (
+            <div className="h-full min-h-0" onDoubleClick={handlePreviewDoubleClick}>
+              <PreviewPane
+                key={`${editablePath ?? "preview"}:${previewEpoch}`}
+                markdownSelectionTarget={{ sessionId: activeTaskId, workspaceKey }}
+                source={source}
+                onClose={() => onSelectSource(null)}
+                workspacePath={workspacePath}
+                onOpenBrowserUrl={onOpenBrowserUrl}
+                onOpenCodeViewer={onOpenCodeViewer}
+                renderHeavyContent={renderHeavyContent}
+              />
+            </div>
           ) : (
             <div className="flex h-full min-h-0 items-center justify-center px-4">
               <WorkspaceFileTreeNotice
@@ -98,7 +146,13 @@ export function FileBrowserSidePane({
               workspacePath={workspacePath}
               workspaceIdentity={workspaceIdentity}
               workspaceRemoteSessionId={workspaceRemoteSessionId}
-              onOpenPreview={onSelectSource}
+              onOpenPreview={(nextSource) => {
+                if (editing) {
+                  toast(intl.formatMessage({ id: "sidePane.fileBrowser.editDiscarded" }));
+                }
+                setEditing(false);
+                onSelectSource(nextSource);
+              }}
             />
           </div>
         </ResizablePanel>

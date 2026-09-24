@@ -85,6 +85,16 @@ export interface DeveloperToolsSidePaneTab {
   openedAt?: number;
 }
 
+export interface FileBrowserSidePaneTab {
+  id: "file-browser";
+  type: "file-browser";
+  ownerTaskId?: string | null;
+  workspaceKey?: string | null;
+  openedAt?: number;
+  /** 左侧预览；未选文件时为 null/缺省。 */
+  source?: CodeViewerSource | null;
+}
+
 export interface TerminalSidePaneTab {
   id: string;
   type: "terminal";
@@ -522,6 +532,7 @@ export type WorkspaceSidePaneTab =
   | WhiteboardSidePaneTab
   | ModelTrajectorySidePaneTab
   | DeveloperToolsSidePaneTab
+  | FileBrowserSidePaneTab
   | TerminalSidePaneTab
   | BrowserUseSidePaneTab
   | SubagentSessionSidePaneTab
@@ -669,6 +680,17 @@ function createDeveloperToolsSidePaneTab(): DeveloperToolsSidePaneTab {
     id: "developer-tools",
     type: "developer-tools",
     openedAt: Date.now(),
+  };
+}
+
+function createFileBrowserSidePaneTab(
+  source?: CodeViewerSource | null,
+): FileBrowserSidePaneTab {
+  return {
+    id: "file-browser",
+    type: "file-browser",
+    openedAt: Date.now(),
+    source: source ?? null,
   };
 }
 
@@ -1054,6 +1076,7 @@ export function sidePaneOwnerKey(taskId: string | null | undefined): string {
 const WORKSPACE_GLOBAL_SIDE_PANE_TAB_TYPES = new Set<WorkspaceSidePaneTab["type"]>([
   "git",
   "developer-tools",
+  "file-browser",
   "treemapping",
 ]);
 
@@ -1584,6 +1607,28 @@ export function activateDeveloperToolsSidePane(
   current: WorkspaceSidePaneState | null,
 ): WorkspaceSidePaneState {
   return activateSidePaneTab(current, createDeveloperToolsSidePaneTab());
+}
+
+export function activateFileBrowserSidePane(
+  current: WorkspaceSidePaneState | null,
+): WorkspaceSidePaneState {
+  const existing = current?.tabs.find(
+    (tab): tab is FileBrowserSidePaneTab => tab.type === "file-browser",
+  );
+  return activateSidePaneTab(current, existing ?? createFileBrowserSidePaneTab());
+}
+
+export function setFileBrowserSidePaneSource(
+  current: WorkspaceSidePaneState | null,
+  source: CodeViewerSource | null,
+): WorkspaceSidePaneState {
+  const existing = current?.tabs.find(
+    (tab): tab is FileBrowserSidePaneTab => tab.type === "file-browser",
+  );
+  const nextTab: FileBrowserSidePaneTab = existing
+    ? { ...existing, source }
+    : createFileBrowserSidePaneTab(source);
+  return activateSidePaneTab(current, nextTab);
 }
 
 export function openTerminalSidePane(

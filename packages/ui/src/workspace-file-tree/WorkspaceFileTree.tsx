@@ -40,6 +40,7 @@ import {
   areWorkspaceFilePathsEqual,
   createCodeViewerSourceForWorkspaceFile,
   getWorkspaceFileGitStatus,
+  toggleWorkspaceFileTreeDirectoryExpansion,
   getWorkspaceFileAncestorDirectories,
   getWorkspaceFileDirectoryChildDepth,
   filterWorkspaceFileTreeRows,
@@ -468,17 +469,9 @@ export function WorkspaceFileTree({
       if (row.type !== "directory") {
         return;
       }
-      treeData.setExpandedPaths((current) => {
-        const next = new Set(current);
-        if (next.has(row.path)) {
-          for (const path of row.compactedPaths ?? [row.path]) {
-            next.delete(path);
-          }
-          return next;
-        }
-        next.add(row.path);
-        return next;
-      });
+      treeData.setExpandedPaths((current) =>
+        toggleWorkspaceFileTreeDirectoryExpansion(current, row),
+      );
       if (!row.expanded) {
         // compact folders 的 row.depth 是压缩后的视觉深度，不能用于写入新加载节点。
         // 使用物理路径深度后，flatten 阶段再扣除 compact offset，子内容才不会与父目录同级。

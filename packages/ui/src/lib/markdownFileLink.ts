@@ -1,5 +1,16 @@
+import {
+  isDocumentRelativeMarkdownHref,
+  resolveMarkdownDocumentRelativePath,
+  toWorkspaceRelativeMarkdownHref,
+} from "@/lib/markdownDocumentRelativePath.js";
 import { decodeFilePathUriEscapes, isAbsoluteFilePath, joinFilePath } from "@/lib/path.js";
 import { stripBalancedAssistantPathQuotes } from "@/lib/assistantPathQuotes.js";
+
+export {
+  resolveMarkdownDocumentRelativePath,
+  resolvePathAgainstAbsoluteBase,
+  toWorkspaceRelativeMarkdownHref,
+} from "@/lib/markdownDocumentRelativePath.js";
 
 interface ParsedMarkdownFileLink {
   path: string;
@@ -10,6 +21,11 @@ interface ParsedMarkdownFileLink {
 export interface MarkdownFileLinkResolveOptions {
   /** 当前 workspace Host 报告的用户 Home；Renderer 不自行读取本机 Home。 */
   homePath?: string;
+  /**
+   * Markdown 文档绝对路径。预览场景传入后，相对图片/链接优先相对该文档目录解析；
+   * 聊天消息不传，保持相对 workspace 根的既有语义。
+   */
+  documentPath?: string;
 }
 
 const LINE_AND_COLUMN_SUFFIX_RE = /^(?<path>.+):(?<line>\d+):(?<column>\d+)$/;
@@ -223,6 +239,43 @@ export function parseMarkdownFileLinkTarget(href: string): ParsedMarkdownFileLin
   };
 }
 
+/**
+ * 预览 Markdown 时：把文档相对目标展开成 workspace 相对 `./...`，
+ * 这样 rehype-harden 收成 `/...` 后仍能按 workspace 根正确解析。
+ */
+export function expandMarkdownHrefAgainstDocument(
+  workspacePath: string,
+  documentPath: string,
+  href: string,
+): string | null {
+  const parsedTarget = parseMarkdownFileLinkTarget(href);
+  if (!isDocumentRelativeMarkdownHref(parsedTarget.path)) {
+    return null;
+  }
+
+  const absolutePath = resolveMarkdownDocumentRelativePath(
+    workspacePath,
+    documentPath,
+    parsedTarget.path,
+  );
+  if (!absolutePath) {
+    return null;
+  }
+
+  const workspaceRelativeHref = toWorkspaceRelativeMarkdownHref(workspacePath, absolutePath);
+  if (!workspaceRelativeHref) {
+    return null;
+  }
+
+  if (parsedTarget.lineNumber === null) {
+    return workspaceRelativeHref;
+  }
+  if (parsedTarget.columnNumber === null) {
+    return `${workspaceRelativeHref}:${parsedTarget.lineNumber}`;
+  }
+  return `${workspaceRelativeHref}:${parsedTarget.lineNumber}:${parsedTarget.columnNumber}`;
+}
+
 export function resolveMarkdownFileLink(
   workspacePath: string | undefined,
   href: string,
@@ -258,6 +311,21 @@ export function resolveMarkdownFileLink(
     return {
       ...parsedTarget,
       path: parsedTarget.path.slice(1),
+    };
+  }
+
+  if (options.documentPath && workspacePath && isDocumentRelativeMarkdownHref(parsedTarget.path)) {
+    const documentResolved = resolveMarkdownDocumentRelativePath(
+      workspacePath,
+      options.documentPath,
+      parsedTarget.path,
+    );
+    if (!documentResolved) {
+      return null;
+    }
+    return {
+      ...parsedTarget,
+      path: documentResolved,
     };
   }
 
@@ -297,6 +365,8 @@ export function resolveMarkdownFileLink(
     }
     // Streamdown/rehype-harden 会把 `./flappy.html` 规范化成 `/flappy.html`。
     // 这里的前导 `/` 表示 markdown 根相对链接，不是系统根目录；否则会误去 stat `/flappy.html`。
+    // 注意：预览场景必须在 rehype 改写阶段把文档相对路径先展开成 workspace 相对路径，
+    // 不能在此处对 `/...` 再按 documentPath 二次拼接，否则已展开的 `/docs/img.png` 会变成 docs/docs/img.png。
     const containedPath = resolveContainedWorkspaceRelativePath(
       workspacePath,
       parsedTarget.path.slice(1),

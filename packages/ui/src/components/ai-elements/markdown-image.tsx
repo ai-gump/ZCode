@@ -15,6 +15,9 @@ import {
   ImageThumbnailGallery,
   imageThumbnailClassName,
   imageThumbnailTriggerClassName,
+  markdownDocumentImageClassName,
+  markdownDocumentImagePlaceholderClassName,
+  markdownDocumentImageTriggerClassName,
 } from "@/components/ai-elements/image-thumbnail-gallery.js";
 import { cn } from "@/components/lib/utils.js";
 import { useOptionalServices } from "@/hooks/useServices.js";
@@ -25,10 +28,14 @@ import { logger } from "@/logger.js";
 
 export { clampImagePreviewOffset as clampMarkdownImagePreviewOffset } from "@/components/ai-elements/image-preview-dialog.js";
 
+export type MarkdownImageDisplay = "thumbnail" | "document";
+
 export type MarkdownImageProps = ComponentProps<"img"> & {
   node?: unknown;
   workspacePath?: string;
   workspaceHomePath?: string;
+  /** thumbnail：聊天缩略图；document：文档预览居中大图。 */
+  imageDisplay?: MarkdownImageDisplay;
   sessionId?: string;
   readAttachment?: (params: {
     sessionId: string;
@@ -99,9 +106,10 @@ export function normalizeConsecutiveMarkdownImageBlocks(markdown: string): strin
  */
 export function MarkdownImageParagraph({
   children,
+  imageDisplay = "thumbnail",
   node: _node,
   ...props
-}: ComponentProps<"p"> & { node?: unknown }) {
+}: ComponentProps<"p"> & { node?: unknown; imageDisplay?: MarkdownImageDisplay }) {
   const meaningfulChildren = Children.toArray(children).filter(
     (child) => typeof child !== "string" || child.trim().length > 0,
   );
@@ -115,7 +123,7 @@ export function MarkdownImageParagraph({
 
   if (isImageGallery) {
     return (
-      <ImageThumbnailGallery data-markdown-image-gallery="">
+      <ImageThumbnailGallery data-markdown-image-gallery="" layout={imageDisplay}>
         {meaningfulChildren}
       </ImageThumbnailGallery>
     );
@@ -142,6 +150,7 @@ function readPreviewGroup(target: HTMLButtonElement): ImagePreviewDialogItem[] {
 export function MarkdownImage({
   alt,
   className,
+  imageDisplay = "thumbnail",
   node: _node,
   onError,
   onLoad,
@@ -154,6 +163,16 @@ export function MarkdownImage({
 }: MarkdownImageProps) {
   const { intl } = useZCodeIntl();
   const services = useOptionalServices();
+  const isDocumentDisplay = imageDisplay === "document";
+  const triggerClassName = isDocumentDisplay
+    ? markdownDocumentImageTriggerClassName
+    : imageThumbnailTriggerClassName;
+  const imageClassName = isDocumentDisplay
+    ? markdownDocumentImageClassName
+    : imageThumbnailClassName;
+  const placeholderClassName = isDocumentDisplay
+    ? markdownDocumentImagePlaceholderClassName
+    : "flex min-h-32 w-full items-center justify-center rounded-xl border border-border bg-surface px-3 py-2 text-center text-ui-base text-foreground-subtle md:h-44 md:w-56 md:shrink-0";
   const resolvedSrc = typeof src === "string" ? src : "";
   const artifactRef = useMemo(() => decodeMarkdownArtifactImageSource(resolvedSrc), [resolvedSrc]);
   const localImageLink = useMemo(() => {
@@ -259,10 +278,7 @@ export function MarkdownImage({
     return (
       <div
         aria-label={failed ? intl.formatMessage({ id: "codeViewer.imageUnavailable" }) : undefined}
-        className={cn(
-          "flex min-h-32 w-full items-center justify-center rounded-xl border border-border bg-surface px-3 py-2 text-center text-ui-base text-foreground-subtle md:h-44 md:w-56 md:shrink-0",
-          className,
-        )}
+        className={cn(placeholderClassName, className)}
         data-markdown-local-image={failed ? "error" : "loading"}
         role={failed ? "img" : "status"}
         title={localImageLink?.path}
@@ -281,10 +297,7 @@ export function MarkdownImage({
     return (
       <div
         aria-label={intl.formatMessage({ id: "codeViewer.imageUnavailable" })}
-        className={cn(
-          "flex min-h-32 w-full items-center justify-center rounded-xl border border-border bg-surface px-3 py-2 text-center text-ui-base text-foreground-subtle md:h-44 md:w-56 md:shrink-0",
-          className,
-        )}
+        className={cn(placeholderClassName, className)}
         data-markdown-image-state="error"
         role="img"
         title={localImageLink?.path}
@@ -328,11 +341,15 @@ export function MarkdownImage({
         type="button"
         aria-label={intl.formatMessage({ id: "chat.attachments.preview.open" })}
         className={cn(
-          imageThumbnailTriggerClassName,
-          effectiveImageStatus === "loading" &&
+          triggerClassName,
+          !isDocumentDisplay &&
+            effectiveImageStatus === "loading" &&
             // 画廊父级的响应式 w-auto/h-44 选择器优先级高于普通尺寸类，
             // 加载态内部又是绝对定位，导致按钮宽度塌缩；仅在加载期间强制固定方形。
             "relative !h-44 !w-44 !max-w-full cursor-default",
+          isDocumentDisplay &&
+            effectiveImageStatus === "loading" &&
+            "relative min-h-48 w-full max-w-3xl cursor-default",
         )}
         data-image-thumbnail-trigger=""
         data-markdown-image-trigger=""
@@ -355,7 +372,7 @@ export function MarkdownImage({
           key={displaySrc}
           alt={imageAlt}
           className={cn(
-            imageThumbnailClassName,
+            imageClassName,
             effectiveImageStatus === "loading" && "invisible",
             className,
           )}

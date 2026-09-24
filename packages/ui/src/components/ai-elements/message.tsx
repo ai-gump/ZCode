@@ -78,6 +78,7 @@ import {
   resolveFileDisplayDescriptor,
 } from "@/lib/fileDisplay.js";
 import {
+  expandMarkdownHrefAgainstDocument,
   normalizeWorkspaceRelativeFilePath,
   parseMarkdownFileLinkTarget,
   resolveMarkdownFileLink,
@@ -362,6 +363,15 @@ export type MessageResponseProps = {
   streamingAnimationKey?: string;
   workspacePath?: string;
   workspaceHomePath?: string;
+  /**
+   * 当前 Markdown 文档绝对路径（PreviewPane 渲染模式传入）。
+   * 用于在 rehype-harden 前把文档相对图片/链接展开成 workspace 相对路径。
+   */
+  documentPath?: string;
+  /**
+   * 内嵌图片展示形态。文档预览传 `document`（居中大图）；聊天默认 `thumbnail`。
+   */
+  imageDisplay?: "thumbnail" | "document";
   workspaceIdentity?: string;
   workspaceRemoteSessionId?: string;
   sessionId?: string;
@@ -774,18 +784,32 @@ function formatMarkdownFileLinkTargetHref(href: string): string {
   return `${path}:${parsedTarget.lineNumber}:${parsedTarget.columnNumber}`;
 }
 
-function shouldRewriteMarkdownFileLinkHref(href: string): boolean {
+function shouldRewriteMarkdownFileLinkHref(
+  href: string,
+  options: { allowDocumentParentTraversal?: boolean } = {},
+): boolean {
   if (resolveMarkdownFileLink(undefined, href)) {
     return true;
   }
 
   const parsedTarget = parseMarkdownFileLinkTarget(href);
+  const allowParent = options.allowDocumentParentTraversal === true;
+  if (
+    !parsedTarget.path ||
+    parsedTarget.path.startsWith("/") ||
+    parsedTarget.path.startsWith("#") ||
+    (!allowParent && parsedTarget.path.startsWith("../")) ||
+    /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(parsedTarget.path)
+  ) {
+    return false;
+  }
+
+  if (allowParent && parsedTarget.path.startsWith("../")) {
+    // 预览文档相对 `../`：是否落在 workspace 由 expand 阶段裁定，这里只放行改写。
+    return true;
+  }
+
   return (
-    Boolean(parsedTarget.path) &&
-    !parsedTarget.path.startsWith("/") &&
-    !parsedTarget.path.startsWith("#") &&
-    !parsedTarget.path.startsWith("../") &&
-    !/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(parsedTarget.path) &&
     // 越界路径若先经过 rehype rewrite/harden，`..` 可能被 URL 归一后丢失，
     // 点击层就无法还原原始逃逸意图；必须在改写前复用相对路径词法边界校验。
     normalizeWorkspaceRelativeFilePath(parsedTarget.path) !== null &&
@@ -798,7 +822,11 @@ function shouldRewriteMarkdownFileLinkHref(href: string): boolean {
   );
 }
 
-function rewriteLocalFileMarkdownTargetsRehypePlugin() {
+function rewriteLocalFileMarkdownTargetsRehypePlugin(options: {
+  workspacePath?: string;
+  documentPath?: string;
+}) {
+  const allowDocumentParentTraversal = Boolean(options.workspacePath && options.documentPath);
   return (tree: HastElementNode) => {
     const visitNode = (node: HastElementNode) => {
       const targetProperty = node.tagName === "a" ? "href" : node.tagName === "img" ? "src" : null;
@@ -806,12 +834,25 @@ function rewriteLocalFileMarkdownTargetsRehypePlugin() {
         node.type === "element" &&
         targetProperty &&
         typeof node.properties?.[targetProperty] === "string" &&
-        shouldRewriteMarkdownFileLinkHref(node.properties[targetProperty])
+        shouldRewriteMarkdownFileLinkHref(node.properties[targetProperty], {
+          allowDocumentParentTraversal,
+        })
       ) {
+        const originalHref = node.properties[targetProperty];
+        // 预览场景先把文档相对路径展开成 workspace 相对路径，避免 harden 把 `./img.png`
+        // 收成 `/img.png` 后按 workspace 根解析，嵌套 Markdown 图片永远打空。
+        const expandedHref =
+          options.workspacePath && options.documentPath
+            ? expandMarkdownHrefAgainstDocument(
+                options.workspacePath,
+                options.documentPath,
+                originalHref,
+              )
+            : null;
         // markdown 图片和链接一样会先经过 rehype-harden。`file://` 会被安全层硬拦，
         // 裸文件名又会被当成未知 URL；这里在 harden 前统一规整成本地路径/相对路径。
         node.properties[targetProperty] = formatMarkdownFileLinkTargetHref(
-          node.properties[targetProperty],
+          expandedHref ?? originalHref,
         );
       }
 
@@ -822,10 +863,15 @@ function rewriteLocalFileMarkdownTargetsRehypePlugin() {
   };
 }
 
-const messageRehypePlugins: PluggableList = [
-  rewriteLocalFileMarkdownTargetsRehypePlugin,
-  ...Object.values(defaultRehypePlugins),
-];
+function createMessageRehypePlugins(options: {
+  workspacePath?: string;
+  documentPath?: string;
+}): PluggableList {
+  return [
+    () => rewriteLocalFileMarkdownTargetsRehypePlugin(options),
+    ...Object.values(defaultRehypePlugins),
+  ];
+}
 
 const messageDefaultRemarkPlugins: PluggableList = Object.entries(defaultRemarkPlugins).map(
   ([name, plugin]) => {
@@ -862,6 +908,8 @@ export function buildMessageStreamdownRenderKey(params: {
   sessionId?: string;
   workspacePath?: string;
   workspaceHomePath?: string;
+  documentPath?: string;
+  imageDisplay?: "thumbnail" | "document";
   workspaceIdentity?: string;
   workspaceRemoteSessionId?: string;
   wrapLongLines: boolean;
@@ -877,6 +925,8 @@ export function buildMessageStreamdownRenderKey(params: {
     params.renderZCodeFileCitations ? "citations" : "plain",
     params.workspacePath ?? "",
     params.workspaceHomePath ?? "",
+    params.documentPath ?? "",
+    params.imageDisplay ?? "thumbnail",
     params.workspaceIdentity ?? "",
     params.workspaceRemoteSessionId ?? "",
   ].join(":");
@@ -1300,6 +1350,8 @@ export const messageResponsePropsAreEqual = (
   nextProps.streamingAnimationKey === prevProps.streamingAnimationKey &&
   nextProps.workspacePath === prevProps.workspacePath &&
   nextProps.workspaceHomePath === prevProps.workspaceHomePath &&
+  nextProps.documentPath === prevProps.documentPath &&
+  nextProps.imageDisplay === prevProps.imageDisplay &&
   nextProps.workspaceIdentity === prevProps.workspaceIdentity &&
   nextProps.workspaceRemoteSessionId === prevProps.workspaceRemoteSessionId &&
   nextProps.sessionId === prevProps.sessionId &&
@@ -1322,6 +1374,8 @@ export const MessageResponse = memo(
     renderZCodeFileCitations = false,
     workspacePath,
     workspaceHomePath,
+    documentPath,
+    imageDisplay = "thumbnail",
     workspaceIdentity,
     workspaceRemoteSessionId,
     sessionId,
@@ -1406,6 +1460,8 @@ export const MessageResponse = memo(
           sessionId,
           workspacePath,
           workspaceHomePath,
+          documentPath,
+          imageDisplay,
           workspaceIdentity,
           workspaceRemoteSessionId,
           wrapLongLines,
@@ -1420,10 +1476,20 @@ export const MessageResponse = memo(
       readAttachment,
       sessionId,
       workspaceHomePath,
+      documentPath,
+      imageDisplay,
       workspacePath,
       workspaceIdentity,
       workspaceRemoteSessionId,
     ]);
+    const messageRehypePlugins = useMemo(
+      () =>
+        createMessageRehypePlugins({
+          workspacePath,
+          documentPath,
+        }),
+      [documentPath, workspacePath],
+    );
     const messageComponents = useMemo(
       () => ({
         a: ({
@@ -1501,13 +1567,16 @@ export const MessageResponse = memo(
         img: (imageProps: MarkdownImageProps) => (
           <MarkdownImage
             {...imageProps}
+            imageDisplay={imageDisplay}
             workspacePath={workspacePath}
             workspaceHomePath={workspaceHomePath}
             sessionId={sessionId}
             readAttachment={readAttachment}
           />
         ),
-        p: MarkdownImageParagraph,
+        p: (paragraphProps: ComponentProps<"p"> & { node?: unknown }) => (
+          <MarkdownImageParagraph {...paragraphProps} imageDisplay={imageDisplay} />
+        ),
         h1: (headingProps: MarkdownHeadingProps) => (
           <MessageMarkdownHeading {...headingProps} headingLevel="h1" />
         ),
@@ -1603,6 +1672,7 @@ export const MessageResponse = memo(
         renderStreaming,
         sessionId,
         theme,
+        imageDisplay,
         workspaceHomePath,
         workspacePath,
         workspaceIdentity,
